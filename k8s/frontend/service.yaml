@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Frontend Service  (Phase 4)
+#
+# ClusterIP service exposing the nginx frontend pods on port 80.
+# The Ingress routes all non-API traffic (path /) to this service.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

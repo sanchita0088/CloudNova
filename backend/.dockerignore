@@ -1,0 +1,38 @@
+# ── Python runtime artefacts ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyc
+
+# ── Virtual environment (never needed inside the image) ──────────────────────
+venv/
+.venv/
+env/
+
+# ── Local environment / secrets (injected via docker-compose) ───────────────
+.env
+.env.*
+
+# ── ChromaDB persistent data (managed as a named Docker volume) ─────────────
+chromadb_data/
+
+# ── Alembic compiled scripts cache ──────────────────────────────────────────
+alembic/__pycache__/
+alembic/versions/__pycache__/
+
+# ── Tests (not needed in the runtime image) ─────────────────────────────────
+app/tests/
+tests/
+
+# ── IDE / OS artefacts ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── Git ─────────────────────────────────────────────────────────────────────
+.git/
+.gitignore

@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Backend Service  (Phase 4)
+#
+# ClusterIP service exposing the FastAPI backend on port 8000.
+# The Ingress controller routes external traffic here.
+# The frontend communicates with the backend through the Ingress
+# (browser → Ingress → this service → backend pods).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

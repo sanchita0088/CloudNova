@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — PostgreSQL Service  (Phase 4)
+#
+# ClusterIP service — PostgreSQL is accessible ONLY within the cluster.
+# No NodePort or LoadBalancer is used; the database is never exposed
+# to external traffic.
+#
+# The service name "postgres" is used as the hostname in DATABASE_URL:
+#   postgresql+psycopg://postgres:<pass>@postgres:5432/cloudops
+#               ↑ user                   ↑ this service name
+# Kubernetes DNS resolves: postgres.cloudops-ai.svc.cluster.local
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP

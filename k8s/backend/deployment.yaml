@@ -1,0 +1,139 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Backend Deployment  (Phase 4)
+#
+# Key design decisions
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. Init Container (migrate)
+#    Runs "alembic upgrade head" before the main container starts.
+#    Uses the same image so the same code drives both migrations and the API.
+#    Both replicas will attempt to run the init container; Alembic's migration
+#    lock table ensures only one applies changes — the other exits cleanly.
+#
+# 2. Environment
+#    Non-sensitive values → backend-config ConfigMap
+#    DATABASE_URL + GEMINI_API_KEY → postgres-secret Secret
+#
+# 3. ChromaDB volume
+#    Mounted from chromadb-pvc at /app/chromadb_data (the path that
+#    config.py resolves CHROMA_DB_DIR to inside the container).
+#
+# 4. Health probes
+#    Both use GET /health which is the existing FastAPI endpoint.
+#    readinessProbe stops routing traffic if the backend is not ready.
+#    livenessProbe restarts the container if it becomes permanently unhealthy.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: cloudops-ai
+    spec:
+      terminationGracePeriodSeconds: 30
+
+      # ── Init Container: run Alembic migrations ────────────────────────────
+      # Runs once before the main container starts.  Exits 0 on success.
+      # If migrations fail the pod stays in Init:Error and does not serve traffic.
+      initContainers:
+        - name: migrate
+          image: cloudopsai-backend:latest
+          imagePullPolicy: IfNotPresent
+          # Override the ENTRYPOINT (entrypoint.sh) with just the migration step
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DATABASE_URL
+
+      # ── Main Container ────────────────────────────────────────────────────
+      containers:
+        - name: backend
+          image: cloudopsai-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+
+          # ── Non-sensitive config from ConfigMap ───────────────────────────
+          envFrom:
+            - configMapRef:
+                name: backend-config
+
+          # ── Sensitive values from Secret ──────────────────────────────────
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DATABASE_URL
+            # Add your real Gemini API key to postgres-secret if needed,
+            # or leave blank to fall back to the Ollama/mock provider.
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: GEMINI_API_KEY
+                  optional: true   # pod still starts if key is absent
+
+          # ── ChromaDB persistent storage ───────────────────────────────────
+          volumeMounts:
+            - name: chromadb-storage
+              mountPath: /app/chromadb_data
+
+          # ── Readiness probe ────────────────────────────────────────────────
+          # Traffic is only routed to this pod once /health returns 200.
+          # initialDelaySeconds accounts for Alembic + uvicorn startup time.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Liveness probe ─────────────────────────────────────────────────
+          # Restarts the container if /health stops returning 200 consistently.
+          # Higher initialDelay than readiness to avoid premature restarts.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Resource limits ────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu:    "250m"
+              memory: "512Mi"
+            limits:
+              cpu:    "1000m"
+              memory: "1Gi"
+
+      volumes:
+        - name: chromadb-storage
+          persistentVolumeClaim:
+            claimName: chromadb-pvc

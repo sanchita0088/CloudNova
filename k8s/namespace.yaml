@@ -1,0 +1,17 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Kubernetes Namespace  (Phase 4)
+#
+# All CloudOps AI resources live in a single dedicated namespace.
+# This isolates the application from other workloads on the cluster and
+# makes RBAC, network policies, and resource quotas easier to apply.
+#
+# Apply first:
+#   kubectl apply -f k8s/namespace.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudops-ai
+  labels:
+    app.kubernetes.io/name: cloudops-ai
+    app.kubernetes.io/part-of: cloudops-ai

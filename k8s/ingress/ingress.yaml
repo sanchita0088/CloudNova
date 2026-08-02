@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Ingress  (Phase 4)
+#
+# Requires: nginx Ingress Controller
+#   Minikube:  minikube addons enable ingress
+#   Bare metal: https://kubernetes.github.io/ingress-nginx/deploy/
+#   GKE/EKS/AKS: use the managed Ingress controller for your cloud.
+#
+# Routing rules (evaluated longest-prefix first)
+# ─────────────────────────────────────────────────────────────────────────────
+#   Host: cloudops.local
+#
+#   /api/v1/*  →  backend:8000   (FastAPI REST endpoints)
+#   /health    →  backend:8000   (health check)
+#   /docs      →  backend:8000   (Swagger UI)
+#   /openapi.json → backend:8000 (OpenAPI spec)
+#   /          →  frontend:80    (React SPA — catch-all)
+#
+# Local DNS setup (add to your machine's /etc/hosts or C:\Windows\System32\drivers\etc\hosts)
+#   127.0.0.1   cloudops.local        # Minikube: use minikube ip instead
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudops-ingress
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: cloudops-ingress
+    app.kubernetes.io/part-of: cloudops-ai
+  annotations:
+    # Use the nginx Ingress controller
+    kubernetes.io/ingress.class: "nginx"
+    # Increase proxy timeouts for long-running AI/LLM requests
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    # Allow larger request bodies (RAG document ingestion)
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cloudops.local
+      http:
+        paths:
+          # ── Backend paths (more specific — evaluated first) ───────────────
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          - path: /openapi.json
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          # ── Frontend catch-all (least specific — evaluated last) ──────────
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

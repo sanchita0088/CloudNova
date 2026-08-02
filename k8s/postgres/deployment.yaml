@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — PostgreSQL Deployment  (Phase 4)
+#
+# Runs a single replica of postgres:16-alpine backed by the postgres-pvc
+# PersistentVolumeClaim.  Credentials are injected via the postgres-secret
+# Secret — no passwords are hardcoded in this file.
+#
+# Replica count is intentionally 1:
+#   Postgres is a stateful workload.  High-availability requires a proper
+#   solution (Patroni, Crunchy Data PGO, CloudNativePG) — not simply
+#   increasing replicas, which would corrupt the data directory.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  replicas: 1
+  # Recreate ensures the old pod fully stops before the new one starts.
+  # With RWO storage only one pod may mount the volume at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: cloudops-ai
+    spec:
+      # ── Terminate pods gracefully so Postgres can flush WAL ────────────────
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+              protocol: TCP
+
+          # ── Credentials from Secret ──────────────────────────────────────
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+            # Explicit data directory (matches the PVC mountPath below)
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          # ── Persistent storage ──────────────────────────────────────────
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+
+          # ── Health probes ───────────────────────────────────────────────
+          # readinessProbe: pg_isready returns 0 only when Postgres is ready
+          # to accept connections.  The backend init-container waits for this.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+
+          # livenessProbe: restarts the container if Postgres stops responding
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Resource limits ─────────────────────────────────────────────
+          resources:
+            requests:
+              cpu:    "250m"
+              memory: "256Mi"
+            limits:
+              cpu:    "1000m"
+              memory: "1Gi"
+
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc

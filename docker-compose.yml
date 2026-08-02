@@ -1,0 +1,106 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Docker Compose  (Phase 3)
+#
+# Services
+#   db        PostgreSQL 16 with a named volume for persistence
+#   backend   FastAPI + Alembic migrations (waits for db to be healthy)
+#   frontend  React (Vite build) served by nginx
+#
+# Usage
+#   docker compose up --build          # first run / after code changes
+#   docker compose up -d               # start in background
+#   docker compose down                # stop & remove containers
+#   docker compose down -v             # also remove named volumes (wipes DB)
+#   docker compose logs -f backend     # tail a single service's logs
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: jasnoor2409
+      POSTGRES_DB:       cloudops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Expose 5432 on the host so you can connect with psql / pgAdmin
+      # locally during development.  Remove this port mapping in
+      # production to avoid exposing the DB directly.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloudops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ── Database ──────────────────────────────────────────────────────────
+      # "db" is the Docker Compose service name — Docker's internal DNS
+      # resolves it to the PostgreSQL container's IP automatically.
+      DATABASE_URL: postgresql+psycopg://postgres:jasnoor2409@db:5432/cloudops
+
+      # ── AI providers ──────────────────────────────────────────────────────
+      # host.docker.internal resolves to the Docker host machine on
+      # Windows & macOS Docker Desktop (works out of the box).
+      # On Linux you may need to add:
+      #   extra_hosts:
+      #     - "host.docker.internal:host-gateway"
+      # under this service if your Docker Engine version is < 20.10.
+      OLLAMA_BASE_URL:  http://host.docker.internal:11434
+      OLLAMA_MODEL:     llama3.2
+      OLLAMA_EMBEDDING_MODEL: llama3.2
+
+      # Replace with your real Gemini API key or leave blank to fall back
+      # to the Ollama/mock provider configured in the app.
+      GEMINI_API_KEY:   ""
+
+      # ── Monitoring ────────────────────────────────────────────────────────
+      PROMETHEUS_URL:   http://host.docker.internal:9090
+
+      # ── App settings ──────────────────────────────────────────────────────
+      PROJECT_NAME:     "CloudOps AI"
+      API_V1_STR:       "/api/v1"
+
+    depends_on:
+      db:
+        condition: service_healthy   # wait until Postgres passes its health check
+    volumes:
+      # ChromaDB vector store — persists embeddings across container restarts
+      - chromadb_data:/app/chromadb_data
+
+  # ── React Frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # VITE_ vars are baked into the JS bundle at build time.
+        # This is the URL the *browser* uses to reach the backend —
+        # i.e. what the user's machine can access, not a Docker-internal name.
+        VITE_API_URL: http://localhost:8000/api/v1
+    restart: unless-stopped
+    ports:
+      - "3000:80"      # http://localhost:3000  →  nginx inside the container
+    depends_on:
+      backend:
+        condition: service_healthy   # wait until the backend /health returns 200
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local    # PostgreSQL data — survives `docker compose down`
+  chromadb_data:
+    driver: local    # ChromaDB embeddings — survives `docker compose down`

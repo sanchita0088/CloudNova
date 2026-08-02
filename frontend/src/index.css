@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', 'Inter', sans-serif;
+  background-color: #E5E4E0;
+  color: #19191B;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image: 
+    radial-gradient(at 85% 15%, rgba(200, 122, 122, 0.18) 0px, transparent 50%),
+    radial-gradient(at 95% 45%, rgba(163, 92, 106, 0.15) 0px, transparent 50%),
+    radial-gradient(at 10% 80%, rgba(226, 213, 195, 0.4) 0px, transparent 50%),
+    radial-gradient(at 5% 10%, rgba(247, 246, 243, 0.8) 0px, transparent 50%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'DM Sans', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Abstra Glass & Editorial Utilities */
+.abstra-card {
+  background: rgba(247, 246, 243, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(216, 215, 210, 0.4);
+  border-radius: 1.5rem;
+}
+
+.abstra-card-solid {
+  background: #F7F6F3;
+  border: 1px solid #D8D7D2;
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04);
+}
+
+.abstra-pill {
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+}
+
+.abstra-art-panel {
+  background: linear-gradient(135deg, #D49B9B 0%, #A35C6A 40%, #7D4E5B 70%, #5E3C48 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8D7D2;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A35C6A;
+}

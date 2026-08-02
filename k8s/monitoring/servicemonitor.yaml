@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Prometheus ServiceMonitor  (Phase 4 — Optional)
+#
+# PREREQUISITES
+# ─────────────────────────────────────────────────────────────────────────────
+# This resource requires the Prometheus Operator CRDs to be installed.
+# Check with: kubectl get crd servicemonitors.monitoring.coreos.com
+#
+# Install kube-prometheus-stack if not already present:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install kube-prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
+#
+# APPLICATION NOTE
+# ─────────────────────────────────────────────────────────────────────────────
+# The current backend does not expose a /metrics endpoint by default.
+# To enable Prometheus scraping, add prometheus-fastapi-instrumentator
+# to requirements.txt and instrument the FastAPI app in main.py.
+# Example (in main.py, after creating the `app` object):
+#
+#   from prometheus_fastapi_instrumentator import Instrumentator
+#   Instrumentator().instrument(app).expose(app)
+#
+# Until that is done, this ServiceMonitor will be created successfully but
+# Prometheus will get scrape errors on /metrics.  It is safe to apply.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-monitor
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: backend-monitor
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: cloudops-ai
+    # This label must match the Prometheus Operator's serviceMonitorSelector.
+    # For kube-prometheus-stack the default is: release: kube-prometheus
+    release: kube-prometheus
+spec:
+  # Which Services this monitor targets — matches the backend Service labels
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/component: api
+
+  # The namespace(s) where the target Services live
+  namespaceSelector:
+    matchNames:
+      - cloudops-ai
+
+  # Scrape configuration
+  endpoints:
+    - port: http          # matches the port name in backend/service.yaml
+      path: /metrics      # FastAPI metrics endpoint (requires instrumentation)
+      interval: 30s       # scrape every 30 seconds
+      scrapeTimeout: 10s

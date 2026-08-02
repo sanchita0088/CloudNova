@@ -1,0 +1,28 @@
+# ── Node modules (re-installed inside the builder stage via npm ci) ──────────
+node_modules/
+
+# ── Previous production builds ───────────────────────────────────────────────
+dist/
+build/
+
+# ── Local environment files ───────────────────────────────────────────────────
+.env
+.env.*
+*.local
+
+# ── IDE / OS artefacts ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── Lint / test caches ────────────────────────────────────────────────────────
+.eslintcache
+.stylelintcache
+coverage/
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore

@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Frontend Deployment  (Phase 4)
+#
+# Serves the Vite-built React SPA via nginx:1.27-alpine.
+# The image is the second stage of frontend/Dockerfile.
+#
+# IMPORTANT — rebuild the frontend image for Kubernetes before deploying:
+#   docker build \
+#     --build-arg VITE_API_URL=http://cloudops.local/api/v1 \
+#     -t cloudops-ai/frontend:latest \
+#     ./frontend
+#
+# VITE_API_URL is baked into the JS bundle at build time.  In Kubernetes both
+# the frontend and backend are behind the same Ingress at cloudops.local, so
+# the browser reaches the API at http://cloudops.local/api/v1/...
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/component: web
+        app.kubernetes.io/part-of: cloudops-ai
+    spec:
+      terminationGracePeriodSeconds: 10
+
+      containers:
+        - name: frontend
+          image: cloudopsai-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+
+          # ── Readiness probe ────────────────────────────────────────────────
+          # nginx returns 200 for GET / once the container is ready.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Liveness probe ─────────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Resource limits ────────────────────────────────────────────────
+          # nginx is extremely lightweight — keep limits low.
+          resources:
+            requests:
+              cpu:    "50m"
+              memory: "64Mi"
+            limits:
+              cpu:    "200m"
+              memory: "128Mi"

@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — PostgreSQL PersistentVolumeClaim  (Phase 4)
+#
+# Requests 5 Gi of durable block storage for the PostgreSQL data directory
+# (/var/lib/postgresql/data).  The volume persists independently of the
+# PostgreSQL Pod — data survives pod restarts, rescheduling, and upgrades.
+#
+# AccessMode ReadWriteOnce (RWO) is correct for a single-instance Postgres;
+# only one node mounts the volume at a time.
+#
+# The StorageClass is left unset so the cluster's default StorageClass is
+# used automatically (works on Minikube, GKE, EKS, AKS out of the box).
+# Set storageClassName explicitly if you need a specific storage tier.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard   # uncomment and set if required

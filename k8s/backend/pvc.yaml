@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CloudOps AI — Backend ChromaDB PersistentVolumeClaim  (Phase 4)
+#
+# ChromaDB stores vector embeddings on disk at /app/chromadb_data inside
+# the container (CHROMA_DB_DIR in config.py resolves to this path).
+#
+# Without a PVC the embeddings are stored in the pod's ephemeral filesystem
+# and lost every time a pod restarts or is rescheduled.  This PVC gives the
+# backend durable storage for the vector index.
+#
+# Note: With 2 backend replicas and a ReadWriteOnce PVC, both replicas must
+# land on the same node to share the volume.  If your cluster supports
+# ReadWriteMany (e.g. NFS, CephFS, EFS), change the accessMode below.
+# Alternatively, replace ChromaDB with a standalone ChromaDB Deployment +
+# Service so each backend replica connects to it over the network (Phase 5).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chromadb-pvc
+  namespace: cloudops-ai
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # storageClassName: standard   # uncomment and set if required
