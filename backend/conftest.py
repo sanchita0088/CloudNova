@@ -1,4 +1,7 @@
-import pytest
+import os
+
+os.environ.setdefault("SECRET_KEY", "test_secret_key_for_unit_tests_only_32_bytes_hex")
+
 from fastapi.testclient import TestClient
 from app.main import app
 

@@ -47,6 +47,9 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # ── Auth & Security ───────────────────────────────────────────────────
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in your .env file}
+
       # ── Database ──────────────────────────────────────────────────────────
       # "db" is the Docker Compose service name — Docker's internal DNS
       # resolves it to the PostgreSQL container's IP automatically.
