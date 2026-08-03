@@ -39,6 +39,34 @@ class MockEmbeddings(Embeddings):
         return self._get_embedding(text)
 
 
+class GeminiEmbeddings(Embeddings):
+    """
+    Embeddings using Google Gemini's text-embedding-004 model via google-generativeai SDK.
+    """
+    def __init__(self):
+        import google.generativeai as genai
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self.model = "models/text-embedding-004"
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        import google.generativeai as genai
+        result = genai.embed_content(
+            model=self.model,
+            content=texts,
+            task_type="retrieval_document"
+        )
+        return result["embedding"]
+
+    def embed_query(self, text: str) -> List[float]:
+        import google.generativeai as genai
+        result = genai.embed_content(
+            model=self.model,
+            content=text,
+            task_type="retrieval_query"
+        )
+        return result["embedding"]
+
+
 class RAGService:
     def __init__(self):
         self.persist_directory = settings.CHROMA_DB_DIR
@@ -47,9 +75,20 @@ class RAGService:
 
     def _init_embeddings(self):
         """
-        Initializes OllamaEmbeddings using the local Ollama instance configuration.
+        Initializes GeminiEmbeddings if GEMINI_API_KEY is set.
+        Otherwise initializes OllamaEmbeddings using the local Ollama instance configuration.
         Otherwise falls back to MockEmbeddings if Ollama is unreachable.
         """
+        if settings.GEMINI_API_KEY:
+            try:
+                logger.info("GEMINI_API_KEY is set. Initializing GeminiEmbeddings...")
+                self.embeddings = GeminiEmbeddings()
+                self.embeddings.embed_query("test")
+                logger.info("RAGService: Gemini embeddings initialized and verified successfully.")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to initialize GeminiEmbeddings: {e}. Falling through to Ollama.")
+
         try:
             from langchain_community.embeddings import OllamaEmbeddings
             logger.info(f"Initializing OllamaEmbeddings on {settings.OLLAMA_BASE_URL} with model {settings.OLLAMA_EMBEDDING_MODEL}...")
@@ -65,15 +104,16 @@ class RAGService:
                     # Test if the model actually supports embeddings
                     self.embeddings.embed_query("test")
                     logger.info("RAGService: Ollama embeddings initialized and verified successfully.")
+                    return
                 except Exception as embed_err:
                     logger.warning(f"RAGService: Ollama model or server does not support embeddings ({embed_err}). Falling back to MockEmbeddings.")
-                    self.embeddings = MockEmbeddings()
             else:
                 logger.warning("RAGService: Ollama service returned error status. Falling back to MockEmbeddings.")
-                self.embeddings = MockEmbeddings()
         except Exception as e:
             logger.error(f"Failed to initialize OllamaEmbeddings: {e}. Falling back to MockEmbeddings.")
-            self.embeddings = MockEmbeddings()
+            
+        logger.info("RAGService: Using MockEmbeddings (fallback).")
+        self.embeddings = MockEmbeddings()
 
     def get_vectorstore(self) -> Chroma:
         """
