@@ -41,12 +41,13 @@ class MockEmbeddings(Embeddings):
 
 class GeminiEmbeddings(Embeddings):
     """
-    Embeddings using Google Gemini's text-embedding-004 model via google-generativeai SDK.
+    Embeddings using Google Gemini's gemini-embedding-001 model via google-generativeai SDK.
     """
     def __init__(self):
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = "models/text-embedding-004"
+        # Note: Google periodically deprecates model names. If a 404 "no longer available" error appears in logs, check current model list at https://ai.google.dev/gemini-api/docs before assuming it's a bug in this codebase.
+        self.model = "models/gemini-embedding-001"
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         import google.generativeai as genai

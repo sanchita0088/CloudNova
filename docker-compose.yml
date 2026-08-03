@@ -68,7 +68,7 @@ services:
 
       # Replace with your real Gemini API key or leave blank to fall back
       # to the Ollama/mock provider configured in the app.
-      GEMINI_API_KEY:   ""
+      GEMINI_API_KEY:   ${GEMINI_API_KEY:-}
 
       # ── Monitoring ────────────────────────────────────────────────────────
       PROMETHEUS_URL:   http://host.docker.internal:9090

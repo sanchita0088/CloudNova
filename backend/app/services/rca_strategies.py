@@ -317,7 +317,7 @@ class MockRCAStrategy(RCAStrategy):
 class GeminiRCAStrategy(RCAStrategy):
     """
     Produces an RCA by retrieving RAG context from ChromaDB and invoking
-    Google Gemini (gemini-2.5-flash) via the google-generativeai SDK.
+    Google Gemini (gemini-3.6-flash) via the google-generativeai SDK.
     Raises on any failure so the caller (AIAnalysisService) can fall back
     to the next strategy in the chain.
     """
@@ -326,8 +326,9 @@ class GeminiRCAStrategy(RCAStrategy):
         import google.generativeai as genai
 
         genai.configure(api_key=settings.GEMINI_API_KEY)
+        # Note: Google periodically deprecates model names. If a 404 "no longer available" error appears in logs, check current model list at https://ai.google.dev/gemini-api/docs before assuming it's a bug in this codebase.
         self._model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
+            model_name="gemini-3.6-flash",
             generation_config=genai.types.GenerationConfig(
                 temperature=0.2,
                 response_mime_type="application/json",
