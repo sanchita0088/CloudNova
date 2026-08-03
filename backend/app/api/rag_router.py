@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from app.services.rag_service import RAGService
 from app.services.ingest import ingest_runbooks
-from app.api.deps import get_rag_service
+from app.api.deps import get_rag_service, get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/rag", tags=["RAG Knowledge Store"])
 
@@ -20,7 +21,7 @@ class IngestResponse(BaseModel):
 
 
 @router.post("/ingest", response_model=IngestResponse)
-def trigger_ingestion():
+def trigger_ingestion(current_user: User = Depends(get_current_user)):
     """
     Scans the data directory, loads Markdown runbooks, splits them,
     and indexes them in the ChromaDB vector database.

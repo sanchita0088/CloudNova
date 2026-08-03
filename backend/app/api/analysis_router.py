@@ -3,7 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from app.services.incidents_service import IncidentService
 from app.services.ai_service import AIAnalysisService
-from app.api.deps import get_incident_service, get_ai_service
+from app.api.deps import get_incident_service, get_ai_service, get_current_user
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ def analyze_incident(
     incident_id: str,
     incident_service: IncidentService = Depends(get_incident_service),
     ai_service: AIAnalysisService = Depends(get_ai_service),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Triggers AI-powered Root Cause Analysis on an existing incident.

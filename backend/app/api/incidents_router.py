@@ -7,7 +7,8 @@ from app.schemas.incidents import (
 )
 from app.services.incidents_service import IncidentService
 from app.core.exceptions import RepositoryError
-from app.api.deps import get_incident_service
+from app.api.deps import get_incident_service, get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/incidents", tags=["Incident Management"])
 
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/incidents", tags=["Incident Management"])
 def simulate_incident(
     request: IncidentSimulateRequest,
     incident_service: IncidentService = Depends(get_incident_service),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Simulates a realistic infrastructure incident by type.
@@ -72,6 +74,7 @@ def get_incident(
 def resolve_incident(
     incident_id: str,
     incident_service: IncidentService = Depends(get_incident_service),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Marks an active incident as resolved.

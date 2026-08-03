@@ -9,7 +9,8 @@ import {
   Loader2,
   Layers,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  LogOut
 } from 'lucide-react';
 
 export function Header({
@@ -20,7 +21,9 @@ export function Header({
   modeToggling,
   handleModeToggle,
   loading,
-  fetchIncidents
+  fetchIncidents,
+  currentUser,
+  handleLogout
 }) {
   const getActiveCount = () => Array.isArray(incidents) ? incidents.filter(i => i.status === 'active').length : 0;
 
@@ -106,9 +109,20 @@ export function Header({
           </button>
           <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-stone-200">
             <div className="w-8 h-8 rounded-full bg-abstra-mauve/15 text-abstra-mauve flex items-center justify-center font-bold text-xs">
-              CA
+              {currentUser ? currentUser.username.slice(0, 2).toUpperCase() : 'CA'}
             </div>
-            <span className="text-xs font-medium text-abstra-dark hidden md:block">Cloud Admin</span>
+            <span className="text-xs font-medium text-abstra-dark hidden md:block">
+              {currentUser ? currentUser.username : 'Cloud Admin'}
+            </span>
+            {handleLogout && (
+              <button
+                onClick={handleLogout}
+                className="p-1.5 rounded-full hover:bg-alarm-red/10 text-abstra-muted hover:text-alarm-red transition"
+                title="Logout"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

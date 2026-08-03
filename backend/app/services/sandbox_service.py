@@ -214,8 +214,13 @@ class SandboxService:
 
     def simulate(self, incident_type: IncidentType, demo_mode: bool = False) -> Dict[str, Any]:
         with self.lock:
+            # Ensure mode is set to 'demo' so simulation state and recovery pipeline execute cleanly
+            from app.services.live_monitor import live_monitor_service
+            live_monitor_service.set_mode("demo", caller_filename="sandbox_service.py", caller_function="simulate", reason="simulation_started")
+
             # Cancel any previously running simulation before starting a new one.
             self.active_simulation = None
+
             self._pending_analysis = None
             self.alerts = []
 

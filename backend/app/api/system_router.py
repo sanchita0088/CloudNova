@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from app.services.system_info import get_system_info
 from app.services.live_monitor import LiveMonitorService
 from app.services.metrics_provider import MetricsProviderFactory
-from app.api.deps import get_live_monitor_service, get_metrics_factory
+from app.api.deps import get_live_monitor_service, get_metrics_factory, get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/system", tags=["System & Device Information"])
 
@@ -57,6 +58,7 @@ def get_monitoring_mode(live_monitor_service: LiveMonitorService = Depends(get_l
 def set_monitoring_mode(
     req: ModeRequest,
     live_monitor_service: LiveMonitorService = Depends(get_live_monitor_service),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Toggles or sets the active monitoring mode ('live' or 'demo').

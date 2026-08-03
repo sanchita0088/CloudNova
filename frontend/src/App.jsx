@@ -14,10 +14,31 @@ import { IncidentsPage } from './pages/IncidentsPage';
 import { RAGPage } from './pages/RAGPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SandboxPage } from './pages/SandboxPage';
+import { LoginPage } from './pages/LoginPage';
 import RecoveryModal from './components/RecoveryModal';
+import ReactMarkdown from 'react-markdown';
 
 function App() {
   const data = useSandboxData();
+  const [authToken, setAuthToken] = React.useState(() => localStorage.getItem('cloudops_token'));
+  const [currentUser, setCurrentUser] = React.useState(() => {
+    const saved = localStorage.getItem('cloudops_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const handleLogin = (token, user) => {
+    localStorage.setItem('cloudops_token', token);
+    localStorage.setItem('cloudops_user', JSON.stringify(user));
+    setAuthToken(token);
+    setCurrentUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('cloudops_token');
+    localStorage.removeItem('cloudops_user');
+    setAuthToken(null);
+    setCurrentUser(null);
+  };
 
   const handleResolve = async (id) => {
     try {
@@ -32,15 +53,33 @@ function App() {
   const handleTriggerAnalysis = async (id) => {
     data.setAnalyzingId(id);
     try {
-      const updated = await api.incidents.analyze(id);
-      data.setSelectedIncident(updated);
-      data.fetchIncidents(false);
+      const res = await api.incidents.analyze(id);
+      const aiAnalysisObj = res.analysis || res.ai_analysis || res;
+      
+      data.setSelectedIncident(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ai_analysis: aiAnalysisObj
+        };
+      });
+      await data.fetchIncidents(false);
     } catch (err) {
       console.error("AI Analysis failed:", err);
     } finally {
       data.setAnalyzingId(null);
     }
   };
+
+  React.useEffect(() => {
+    if (data.selectedIncident && !data.selectedIncident.ai_analysis && !data.analyzingId) {
+      const incId = data.selectedIncident.id || data.selectedIncident.incident_id;
+      if (incId) {
+        handleTriggerAnalysis(incId);
+      }
+    }
+  }, [data.selectedIncident?.id]);
+
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -125,6 +164,8 @@ function App() {
         handleModeToggle={data.handleModeToggle}
         loading={data.loading}
         fetchIncidents={data.fetchIncidents}
+        currentUser={currentUser}
+        handleLogout={handleLogout}
       />
 
       {/* Main Workspace Container */}
@@ -294,8 +335,30 @@ function App() {
                   {/* Right Column: Markdown Report */}
                   <div className="space-y-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-abstra-dark font-display">AI Incident Post-Mortem</span>
-                    <div className="bg-white p-5 rounded-2xl border border-stone-200 text-abstra-dark text-xs whitespace-pre-wrap leading-relaxed max-h-[360px] overflow-y-auto font-mono">
-                      {data.selectedIncident.ai_analysis.incident_report}
+                    <div className="bg-white p-5 rounded-2xl border border-stone-200 text-abstra-dark text-xs leading-relaxed max-h-[360px] overflow-y-auto">
+                      <ReactMarkdown
+                        components={{
+                          h1: ({children}) => <h1 className="text-base font-bold text-abstra-dark font-display mb-3 mt-4 first:mt-0">{children}</h1>,
+                          h2: ({children}) => <h2 className="text-sm font-bold text-abstra-dark font-display mb-2 mt-4 first:mt-0 border-b border-stone-200 pb-1">{children}</h2>,
+                          h3: ({children}) => <h3 className="text-xs font-bold text-abstra-dark font-display mb-2 mt-3">{children}</h3>,
+                          p: ({children}) => <p className="text-xs text-abstra-dark mb-2 leading-relaxed">{children}</p>,
+                          strong: ({children}) => <strong className="font-bold text-abstra-dark">{children}</strong>,
+                          em: ({children}) => <em className="italic text-abstra-muted">{children}</em>,
+                          ul: ({children}) => <ul className="list-disc list-inside space-y-1 mb-3 text-xs">{children}</ul>,
+                          ol: ({children}) => <ol className="list-decimal list-inside space-y-1 mb-3 text-xs">{children}</ol>,
+                          li: ({children}) => <li className="text-xs text-abstra-dark">{children}</li>,
+                          code: ({children, className}) => {
+                            const isBlock = className;
+                            return isBlock 
+                              ? <pre className="bg-abstra-dark text-green-400 p-3 rounded-lg text-[11px] font-mono overflow-x-auto my-2"><code>{children}</code></pre>
+                              : <code className="bg-stone-200 text-abstra-mauve px-1.5 py-0.5 rounded text-[11px] font-mono">{children}</code>;
+                          },
+                          blockquote: ({children}) => <blockquote className="border-l-2 border-abstra-terracotta pl-3 italic text-abstra-muted my-2">{children}</blockquote>,
+                          hr: () => <hr className="border-stone-200 my-3" />,
+                        }}
+                      >
+                        {data.selectedIncident.ai_analysis.incident_report}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 </div>

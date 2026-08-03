@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from app.schemas.incidents import IncidentType
 from app.services.sandbox_service import SandboxService
-from app.api.deps import get_sandbox_service
+from app.api.deps import get_sandbox_service, get_current_user
+from app.models.user import User
 
 router = APIRouter(prefix="/sandbox", tags=["Infrastructure Sandbox"])
 
@@ -46,6 +47,7 @@ async def stream_sandbox_telemetry(sandbox_service: SandboxService = Depends(get
 def start_simulation(
     req: SimulateRequest,
     sandbox_service: SandboxService = Depends(get_sandbox_service),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Starts a failure simulation scenario by key type,
@@ -57,7 +59,10 @@ def start_simulation(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to start simulation: {str(e)}")
 
 @router.post("/recover")
-def trigger_recovery(sandbox_service: SandboxService = Depends(get_sandbox_service)):
+def trigger_recovery(
+    sandbox_service: SandboxService = Depends(get_sandbox_service),
+    current_user: User = Depends(get_current_user),
+):
     """
     Triggers recovery automation to gradually repair metrics
     and restore the services back to healthy operational state.

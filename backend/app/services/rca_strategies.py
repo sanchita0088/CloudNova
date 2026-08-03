@@ -336,22 +336,27 @@ class GeminiRCAStrategy(RCAStrategy):
 
     # -- shared helper: identical to OllamaRCAStrategy._format_rag_context ---
     def _format_rag_context(self, incident: IncidentResponse) -> str:
-        query = f"{incident.service} {incident.severity} {incident.message[:300]}"
+        """
+        Refined, token-optimized RAG retrieval for Gemini:
+        1. Extracts precise service & error keywords.
+        2. Retrieves only the single top-1 (k=1) relevant runbook chunk to minimize token overhead.
+        3. Truncates context excerpt to 400 chars.
+        """
+        error_snippet = incident.message.split('\n')[0][:120] if incident.message else ""
+        query = f"{incident.service} {error_snippet}".strip()
         try:
-            docs = rag_service.search(query, k=3)
+            docs = rag_service.search(query, k=1)
             if not docs:
-                return "No relevant runbook context was found in the knowledge base."
+                return "No relevant runbook context found."
 
-            formatted_chunks = []
-            for i, doc in enumerate(docs, 1):
-                source = doc.metadata.get("source", "unknown")
-                formatted_chunks.append(
-                    f"### Runbook Chunk {i} (source: {source})\n\n{doc.page_content}"
-                )
-            return "\n\n---\n\n".join(formatted_chunks)
+            doc = docs[0]
+            source = doc.metadata.get("source", "runbook")
+            content_snippet = doc.page_content[:400] + ("..." if len(doc.page_content) > 400 else "")
+            return f"### Runbook Excerpt (source: {source})\n{content_snippet}"
         except Exception as e:
-            logger.error(f"RAG context retrieval failed: {e}")
-            return "Runbook context retrieval failed. Proceeding with incident log only."
+            logger.error(f"Token-optimized RAG context retrieval failed: {e}")
+            return "Runbook context unavailable."
+
 
     def generate(self, incident: IncidentResponse) -> Dict[str, Any]:
         from app.services.prompts import RCA_SYSTEM_PROMPT, RCA_HUMAN_PROMPT
@@ -419,25 +424,26 @@ class OllamaRCAStrategy(RCAStrategy):
 
     def _format_rag_context(self, incident: IncidentResponse) -> str:
         """
-        Builds a rich query from the incident and retrieves the top-k runbook chunks.
-        Returns them as a formatted string for injection into the prompt.
+        Refined, token-optimized RAG retrieval:
+        1. Extracts precise service & error keywords.
+        2. Retrieves only the single top-1 (k=1) relevant runbook chunk to minimize token overhead.
+        3. Truncates context excerpt to 400 chars.
         """
-        query = f"{incident.service} {incident.severity} {incident.message[:300]}"
+        error_snippet = incident.message.split('\n')[0][:120] if incident.message else ""
+        query = f"{incident.service} {error_snippet}".strip()
         try:
-            docs = rag_service.search(query, k=3)
+            docs = rag_service.search(query, k=1)
             if not docs:
-                return "No relevant runbook context was found in the knowledge base."
+                return "No relevant runbook context found."
 
-            formatted_chunks = []
-            for i, doc in enumerate(docs, 1):
-                source = doc.metadata.get("source", "unknown")
-                formatted_chunks.append(
-                    f"### Runbook Chunk {i} (source: {source})\n\n{doc.page_content}"
-                )
-            return "\n\n---\n\n".join(formatted_chunks)
+            doc = docs[0]
+            source = doc.metadata.get("source", "runbook")
+            content_snippet = doc.page_content[:400] + ("..." if len(doc.page_content) > 400 else "")
+            return f"### Runbook Excerpt (source: {source})\n{content_snippet}"
         except Exception as e:
-            logger.error(f"RAG context retrieval failed: {e}")
-            return "Runbook context retrieval failed. Proceeding with incident log only."
+            logger.error(f"Token-optimized RAG context retrieval failed: {e}")
+            return "Runbook context unavailable."
+
 
     def generate(self, incident: IncidentResponse) -> Dict[str, Any]:
         rag_context = self._format_rag_context(incident)
