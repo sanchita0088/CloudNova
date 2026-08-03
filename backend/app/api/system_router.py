@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from app.services.system_info import get_system_info
 from app.services.live_monitor import LiveMonitorService
 from app.services.metrics_provider import MetricsProviderFactory
-from app.api.deps import get_live_monitor_service, get_metrics_factory, get_current_user
+from app.services.ai_service import AIAnalysisService
+from app.api.deps import get_live_monitor_service, get_metrics_factory, get_current_user, get_ai_service
 from app.models.user import User
 
 router = APIRouter(prefix="/system", tags=["System & Device Information"])
@@ -17,6 +18,7 @@ class ModeRequest(BaseModel):
 def get_host_info(
     live_monitor_service: LiveMonitorService = Depends(get_live_monitor_service),
     metrics_factory: MetricsProviderFactory = Depends(get_metrics_factory),
+    ai_service: AIAnalysisService = Depends(get_ai_service),
 ):
     """
     Returns hardware, OS, CPU, RAM, Disk, IP, and active provider info for the target host machine.
@@ -35,7 +37,8 @@ def get_host_info(
     return {
         "system_info": info,
         "active_provider": provider.provider_name,
-        "mode": current_mode
+        "mode": current_mode,
+        "ai_model": ai_service.get_active_model_name()
     }
 
 

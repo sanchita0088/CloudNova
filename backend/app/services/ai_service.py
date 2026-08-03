@@ -110,6 +110,13 @@ class AIAnalysisService:
             logger.error(f"LLM invocation failed: {e}. Falling back to mock.")
             return MockRCAStrategy().generate(incident)
 
+    def get_active_model_name(self) -> str:
+        if isinstance(self._strategy, GeminiRCAStrategy):
+            return f"Google Gemini ({GeminiRCAStrategy.MODEL_NAME})"
+        elif isinstance(self._strategy, OllamaRCAStrategy):
+            return f"Ollama ({settings.OLLAMA_MODEL})"
+        return "Mock AI Engine"
+
 
 # Global singleton instance
 ai_service = AIAnalysisService()

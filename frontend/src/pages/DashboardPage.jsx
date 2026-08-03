@@ -147,12 +147,12 @@ export function DashboardPage({
               {getActiveCount() > 0 ? "DEGRADED STATE" : "ALL SYSTEMS OPTIMAL"}
             </div>
             <p className="text-xs text-white/80 mt-2 leading-normal">
-              {getActiveCount() > 0 ? `${getActiveCount()} active incidents being analyzed by Ollama AI.` : "Zero active incidents detected across microservices."}
+              {getActiveCount() > 0 ? `${getActiveCount()} active incidents being analyzed by AI.` : "Zero active incidents detected across microservices."}
             </p>
           </div>
 
           <div className="flex justify-between items-end text-[11px] text-white/70 border-t border-white/20 pt-4 font-mono">
-            <span>Ollama (llama3.2)</span>
+            <span>{systemInfo?.ai_model || "Google Gemini (gemini-3.6-flash)"}</span>
             <span>/ 2026</span>
           </div>
         </div>
@@ -198,7 +198,7 @@ export function DashboardPage({
             <Cpu className="h-4 w-4 text-signal-teal" />
           </div>
           <div>
-            <span className="text-lg font-bold font-display text-abstra-dark">Ollama (llama3.2)</span>
+            <span className="text-lg font-bold font-display text-abstra-dark">{systemInfo?.ai_model || "Google Gemini (gemini-3.6-flash)"}</span>
           </div>
         </div>
       </div>
