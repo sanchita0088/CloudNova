@@ -35,6 +35,40 @@ class SandboxService:
         self.reset_sandbox_state()
         self.start_background_worker()
 
+    # ── DB helpers: keep simulation_active flag in system_settings ──────────
+    @staticmethod
+    def _db_set_simulation_active(active: bool) -> None:
+        """Write simulation_active flag to shared DB so all replicas agree."""
+        try:
+            from app.db.database import engine
+            from sqlalchemy import text
+            val = "true" if active else "false"
+            with engine.begin() as conn:
+                conn.execute(
+                    text("INSERT INTO system_settings (key, value) VALUES ('simulation_active', :val) "
+                         "ON CONFLICT (key) DO UPDATE SET value = :val;"),
+                    {"val": val}
+                )
+        except Exception as e:
+            logger.error(f"Error writing simulation_active to DB: {e}")
+
+    @staticmethod
+    def _db_get_simulation_active() -> bool:
+        """Read simulation_active flag from shared DB."""
+        try:
+            from app.db.database import engine
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT value FROM system_settings WHERE key = 'simulation_active';")
+                ).fetchone()
+                if row:
+                    return row[0] == "true"
+        except Exception as e:
+            logger.error(f"Error reading simulation_active from DB: {e}")
+        return False
+
+
     def reset_sandbox_state(self):
         with self.lock:
             self.services = {
@@ -112,6 +146,9 @@ class SandboxService:
             self.active_simulation: Optional[Dict[str, Any]] = None
             self.alerts: List[Dict[str, Any]] = []
             self.logs: List[str] = ["Sandbox environment started in Healthy mode."]
+        # On reset, also clear the shared DB flag so other replicas agree.
+        self._db_set_simulation_active(False)
+
 
     def get_state(self) -> Dict[str, Any]:
         from app.services.live_monitor import live_monitor_service
@@ -135,15 +172,33 @@ class SandboxService:
             }
 
         with self.lock:
+            # Use DB flag as source of truth so both replicas agree.
+            # If the shared DB says no simulation is running, report None
+            # even if this pod has stale in-memory state.
+            sim_active_in_db = self._db_get_simulation_active()
+            reported_simulation = self.active_simulation if sim_active_in_db else None
+            if not sim_active_in_db and self.active_simulation is not None:
+                # Stale local state — clear it so this pod catches up.
+                self.active_simulation = None
+                self._pending_analysis = None
+                self.alerts = []
+                for key, service in self.services.items():
+                    service["status"] = "healthy"
+                    base = HEALTHY_METRICS[key]
+                    service["cpu"] = base["cpu"]
+                    service["memory"] = base["memory"]
+                    service["disk"] = base["disk"]
+                    service["network"] = base["network"]
             return {
                 "mode": "demo",
                 "provider": active_prov,
                 "system_info": sys_info,
                 "services": list(self.services.values()),
-                "active_simulation": self.active_simulation,
+                "active_simulation": reported_simulation,
                 "alerts": self.alerts,
-                "logs": self.logs[-40:]  # Limit log size returned
+                "logs": self.logs[-40:]
             }
+
 
     def start_background_worker(self):
         self.stop_event.clear()
@@ -160,7 +215,6 @@ class SandboxService:
     def simulate(self, incident_type: IncidentType, demo_mode: bool = False) -> Dict[str, Any]:
         with self.lock:
             # Cancel any previously running simulation before starting a new one.
-            # This guarantees only one simulation can exist at any time.
             self.active_simulation = None
             self._pending_analysis = None
             self.alerts = []
@@ -189,7 +243,10 @@ class SandboxService:
             msg = f"Started simulation of '{type_str}' (Demo Mode: {demo_mode})"
             self.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] SYSTEM: {msg}")
             logger.info(msg)
+            # Mark simulation active in shared DB so other replicas know.
+            self._db_set_simulation_active(True)
             return self.active_simulation
+
 
     def stop_simulation(self) -> None:
         """Cancel and clear any active simulation and pending analysis.
@@ -201,7 +258,6 @@ class SandboxService:
                 self.active_simulation = None
                 self._pending_analysis = None
                 self.alerts = []
-                # Reset all services back to healthy
                 for key, service in self.services.items():
                     service["status"] = "healthy"
                     base = HEALTHY_METRICS[key]
@@ -210,6 +266,10 @@ class SandboxService:
                     service["disk"] = base["disk"]
                     service["network"] = base["network"]
                 self.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] SYSTEM: Demo simulation cancelled. Switched to Live Monitoring mode.")
+        # Always write DB flag even if local state was already None,
+        # so the other replica also stops showing an active simulation.
+        self._db_set_simulation_active(False)
+
 
     def trigger_recovery(self) -> Dict[str, Any]:
         with self.lock:
@@ -276,12 +336,16 @@ class SandboxService:
             now_str = datetime.now().strftime("%H:%M:%S")
 
             # Do not advance simulation steps when in live monitoring mode.
-            # This prevents demo state from accumulating in the background
-            # when the user has intentionally switched to live mode.
             if live_monitor_service.get_mode() == "live":
                 return
 
-            # 1. Fluctuating metrics of healthy services
+            # 2. Advance active simulation steps — nothing to do if idle
+            if not self.active_simulation:
+                return
+
+            # 1. Fluctuating metrics of healthy services — ONLY while a demo is running.
+            # When no simulation is active the services stay static at HEALTHY_METRICS
+            # so the dashboard looks idle until the user explicitly presses Start Demo Loop.
             for key, service in self.services.items():
                 if service["status"] == "healthy":
                     base = HEALTHY_METRICS[key]
@@ -289,10 +353,7 @@ class SandboxService:
                     service["memory"] = max(1, min(100, int(base["memory"] + random.uniform(-1, 1))))
                     service["disk"] = max(1, min(100, int(base["disk"] + random.uniform(-0.1, 0.1))))
                     service["network"] = max(1, min(2000, int(base["network"] + random.uniform(-1, 1))))
-            
-            # 2. Advance active simulation steps
-            if not self.active_simulation:
-                return
+
 
             sim = self.active_simulation
             elapsed = time.time() - sim["start_time"]
@@ -323,6 +384,9 @@ class SandboxService:
 
                     self.logs.append(f"[{now_str}] SYSTEM: Recovery successfully completed. Infrastructure returned to normal state.")
                     self.active_simulation = None  # End simulation record
+                    # Clear shared DB flag so other replicas also see no simulation.
+                    self._db_set_simulation_active(False)
+
                 else:
                     # Linearly restore metrics back to normal
                     pct_done = rec_elapsed / 6.0

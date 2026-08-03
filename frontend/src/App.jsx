@@ -28,6 +28,7 @@ import {
   ToggleRight
 } from 'lucide-react';
 import { api } from './services/api';
+import RecoveryModal from './components/RecoveryModal';
 
 const generateSvgPath = (data, key, serviceKey) => {
   if (!data || data.length < 2) return '';
@@ -88,6 +89,7 @@ function App() {
   const [selectedGraphService, setSelectedGraphService] = useState('payment-service');
   const [sandboxLogsFilter, setSandboxLogsFilter] = useState('all');
   const [recovering, setRecovering] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [demoActive, setDemoActive] = useState(false);
 
   // Live/Demo mode + system hardware info
@@ -123,7 +125,7 @@ function App() {
     }
   };
 
-  // Fetch system info + current mode from backend
+  // Fetch system info from backend (hardware specs only)
   const fetchSystemInfo = async () => {
     try {
       const res = await api.system.info();
@@ -139,7 +141,6 @@ function App() {
         ram_used_pct: raw.memory?.used_pct,
         disk_used_pct: raw.disk?.used_pct,
       });
-      if (res.mode) setOperationMode(res.mode);
     } catch (err) {
       console.error('Failed to fetch system info:', err);
     }
@@ -148,7 +149,9 @@ function App() {
   const fetchMode = async () => {
     try {
       const data = await api.system.getMode();
-      setOperationMode(data.mode || 'demo');
+      const targetMode = data.mode || 'demo';
+      console.log(`[MODE_TRACE_FRONTEND] timestamp=${new Date().toISOString()} | function=fetchMode | setting operationMode to: ${targetMode}`);
+      setOperationMode(targetMode);
     } catch (err) {
       console.error('Failed to fetch mode:', err);
     }
@@ -156,6 +159,7 @@ function App() {
 
   const handleModeToggle = async () => {
     const nextMode = operationMode === 'demo' ? 'live' : 'demo';
+    console.log(`[MODE_TRACE_FRONTEND] timestamp=${new Date().toISOString()} | function=handleModeToggle | prevMode=${operationMode} | nextMode=${nextMode}`);
     setModeToggling(true);
     try {
       await api.system.setMode(nextMode);
@@ -179,13 +183,12 @@ function App() {
       const state = await api.sandbox.getState();
       setSandboxState(state);
 
-      // Do NOT sync operationMode from state.mode here.
-      // Mode is set exclusively by:
-      //   1. fetchMode() on initial mount
-      //   2. handleModeToggle() when the user clicks the Live/Demo toggle
-      // Overwriting it here from polling would flip the UI back to Demo
-      // every 3 seconds if the backend process restarted (which resets
-      // live_monitor_service.mode to "demo" by default).
+      // Sync the mode displayed in the UI with what the backend database reports.
+      // Since the backend now persists this state in PostgreSQL, this is fully
+      // synchronized and prevents any discrepancy between replicas.
+      if (state && state.mode) {
+        setOperationMode(state.mode);
+      }
 
       if (state && state.active_simulation) {
         setDemoActive(state.active_simulation.demo_mode);
@@ -259,16 +262,26 @@ function App() {
   };
 
   const handleRecover = async () => {
+    // Fire the backend recovery call immediately (it starts the 6-second
+    // backend animation), then show the frontend recovery pipeline modal.
     setRecovering(true);
     try {
       await api.sandbox.recover();
-      await fetchSandboxState();
-      await fetchIncidents(false);
     } catch (err) {
-      console.error("Recovery failed:", err);
-    } finally {
+      console.error('Recovery failed:', err);
       setRecovering(false);
+      return;
     }
+    // Open the visual pipeline — it will call onComplete when done
+    setShowRecoveryModal(true);
+  };
+
+  const handleRecoveryComplete = async () => {
+    setShowRecoveryModal(false);
+    setRecovering(false);
+    setDemoActive(false);
+    await fetchSandboxState();
+    await fetchIncidents(false);
   };
 
   const handleResolve = async (id) => {
@@ -1354,6 +1367,14 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Recovery Pipeline Modal — rendered as a portal over everything */}
+      {showRecoveryModal && (
+        <RecoveryModal
+          sandboxServices={sandboxState?.services || []}
+          onComplete={handleRecoveryComplete}
+        />
       )}
     </div>
   );

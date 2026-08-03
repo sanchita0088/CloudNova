@@ -20,12 +20,21 @@ def get_host_info(
     """
     Returns hardware, OS, CPU, RAM, Disk, IP, and active provider info for the target host machine.
     """
+    import os
+    import time
+    from datetime import datetime
+    import logging
+    logger = logging.getLogger(__name__)
+    current_mode = live_monitor_service.get_mode()
+    pod_name = os.environ.get("HOSTNAME", os.environ.get("POD_NAME", f"pid-{os.getpid()}"))
+    logger.info(f"[ENDPOINT_TRACE] GET /system/info | current_mode={current_mode} | timestamp={datetime.now().isoformat()} | process_id={os.getpid()} | pod_name={pod_name}")
+
     info = get_system_info()
     provider = metrics_factory.get_provider()
     return {
         "system_info": info,
         "active_provider": provider.provider_name,
-        "mode": live_monitor_service.get_mode()
+        "mode": current_mode
     }
 
 
@@ -34,7 +43,14 @@ def get_monitoring_mode(live_monitor_service: LiveMonitorService = Depends(get_l
     """
     Returns the current active monitoring mode: 'live' or 'demo'.
     """
-    return {"mode": live_monitor_service.get_mode()}
+    import os
+    from datetime import datetime
+    import logging
+    logger = logging.getLogger(__name__)
+    current_mode = live_monitor_service.get_mode()
+    pod_name = os.environ.get("HOSTNAME", os.environ.get("POD_NAME", f"pid-{os.getpid()}"))
+    logger.info(f"[ENDPOINT_TRACE] GET /system/mode | current_mode={current_mode} | timestamp={datetime.now().isoformat()} | process_id={os.getpid()} | pod_name={pod_name}")
+    return {"mode": current_mode}
 
 
 @router.post("/mode")
@@ -49,7 +65,12 @@ def set_monitoring_mode(
     """
     if req.mode not in ["live", "demo"]:
         raise HTTPException(status_code=400, detail="Mode must be 'live' or 'demo'.")
-    new_mode = live_monitor_service.set_mode(req.mode)
+    new_mode = live_monitor_service.set_mode(
+        req.mode,
+        caller_filename="system_router.py",
+        caller_function="set_monitoring_mode",
+        reason="HTTP POST /api/v1/system/mode requested by user toggle"
+    )
 
     # When switching to live, immediately cancel any active demo simulation.
     # This prevents the worker thread from continuing to advance simulation
