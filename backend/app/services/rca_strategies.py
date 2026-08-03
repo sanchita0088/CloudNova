@@ -321,6 +321,7 @@ class GeminiRCAStrategy(RCAStrategy):
     Raises on any failure so the caller (AIAnalysisService) can fall back
     to the next strategy in the chain.
     """
+    MODEL_NAME = "gemini-3.6-flash"
 
     def __init__(self):
         import google.generativeai as genai
@@ -328,7 +329,7 @@ class GeminiRCAStrategy(RCAStrategy):
         genai.configure(api_key=settings.GEMINI_API_KEY)
         # Note: Google periodically deprecates model names. If a 404 "no longer available" error appears in logs, check current model list at https://ai.google.dev/gemini-api/docs before assuming it's a bug in this codebase.
         self._model = genai.GenerativeModel(
-            model_name="gemini-3.6-flash",
+            model_name=self.MODEL_NAME,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.2,
                 response_mime_type="application/json",

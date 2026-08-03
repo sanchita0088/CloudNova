@@ -38,8 +38,8 @@ class AIAnalysisService:
         if settings.GEMINI_API_KEY:
             try:
                 logger.info(
-                    "GEMINI_API_KEY is set. Initializing GeminiRCAStrategy "
-                    "(model: gemini-2.5-flash)..."
+                    f"GEMINI_API_KEY is set. Initializing GeminiRCAStrategy "
+                    f"(model: {GeminiRCAStrategy.MODEL_NAME})..."
                 )
                 strategy = GeminiRCAStrategy()
                 logger.info(
