@@ -314,6 +314,91 @@ class MockRCAStrategy(RCAStrategy):
         }
 
 
+class GeminiRCAStrategy(RCAStrategy):
+    """
+    Produces an RCA by retrieving RAG context from ChromaDB and invoking
+    Google Gemini (gemini-2.5-flash) via the google-generativeai SDK.
+    Raises on any failure so the caller (AIAnalysisService) can fall back
+    to the next strategy in the chain.
+    """
+
+    def __init__(self):
+        import google.generativeai as genai
+
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self._model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+            ),
+        )
+
+    # -- shared helper: identical to OllamaRCAStrategy._format_rag_context ---
+    def _format_rag_context(self, incident: IncidentResponse) -> str:
+        query = f"{incident.service} {incident.severity} {incident.message[:300]}"
+        try:
+            docs = rag_service.search(query, k=3)
+            if not docs:
+                return "No relevant runbook context was found in the knowledge base."
+
+            formatted_chunks = []
+            for i, doc in enumerate(docs, 1):
+                source = doc.metadata.get("source", "unknown")
+                formatted_chunks.append(
+                    f"### Runbook Chunk {i} (source: {source})\n\n{doc.page_content}"
+                )
+            return "\n\n---\n\n".join(formatted_chunks)
+        except Exception as e:
+            logger.error(f"RAG context retrieval failed: {e}")
+            return "Runbook context retrieval failed. Proceeding with incident log only."
+
+    def generate(self, incident: IncidentResponse) -> Dict[str, Any]:
+        from app.services.prompts import RCA_SYSTEM_PROMPT, RCA_HUMAN_PROMPT
+
+        rag_context = self._format_rag_context(incident)
+        logger.info(f"Gemini: RAG context retrieved ({len(rag_context)} chars)")
+
+        # Build the human prompt using the same template variables as Ollama
+        human_text = RCA_HUMAN_PROMPT.format(
+            incident_id=incident.id,
+            service=incident.service,
+            severity=incident.severity,
+            timestamp=incident.timestamp,
+            message=incident.message,
+            rag_context=rag_context,
+        )
+
+        # Combine system + human into a single prompt for Gemini.
+        # RCA_SYSTEM_PROMPT uses LangChain-style {{ / }} to escape literal
+        # braces; undo that here since we're not going through LangChain.
+        system_text = RCA_SYSTEM_PROMPT.replace("{{", "{").replace("}}", "}")
+        full_prompt = f"{system_text}\n\n{human_text}"
+
+        response = self._model.generate_content(full_prompt)
+        raw_text = response.text.strip()
+        logger.info(f"Gemini: LLM raw response length: {len(raw_text)} chars")
+
+        # Strip any accidental markdown code fences
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:].strip()
+
+        result = json.loads(raw_text)
+
+        # Validate required keys; fill gaps from mock rather than failing
+        required_keys = {"root_cause", "confidence_score", "recovery_steps", "incident_report"}
+        missing = required_keys - result.keys()
+        if missing:
+            logger.warning(f"Gemini response missing keys: {missing}. Merging with mock.")
+            mock = MockRCAStrategy().generate(incident)
+            for key in missing:
+                result[key] = mock[key]
+
+        return result
+
+
 class OllamaRCAStrategy(RCAStrategy):
     """
     Produces an RCA by retrieving RAG context from ChromaDB and invoking

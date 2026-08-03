@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: jasnoor2409
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your .env file}
       POSTGRES_DB:       cloudops
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -50,7 +50,7 @@ services:
       # ── Database ──────────────────────────────────────────────────────────
       # "db" is the Docker Compose service name — Docker's internal DNS
       # resolves it to the PostgreSQL container's IP automatically.
-      DATABASE_URL: postgresql+psycopg://postgres:jasnoor2409@db:5432/cloudops
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in your .env file}
 
       # ── AI providers ──────────────────────────────────────────────────────
       # host.docker.internal resolves to the Docker host machine on

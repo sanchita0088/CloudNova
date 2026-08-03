@@ -23,12 +23,11 @@ class Settings(BaseSettings):
     # Monitoring url
     PROMETHEUS_URL: str = "http://localhost:9090"
 
-    # Database. The default below is a local-dev convenience value only -
-    # it is always overridden via the DATABASE_URL environment variable in
-    # Docker Compose (Phase 3) and via a Kubernetes Secret (Phase 4), so no
-    # code change is needed to point this at a different Postgres instance.
+    # Database — REQUIRED.  Must be supplied via environment variable or .env
+    # file.  The application will refuse to start if this is missing.
     # Uses the psycopg 3 driver (postgresql+psycopg://), per Phase 2 scope.
-    DATABASE_URL: str = "postgresql+psycopg://postgres:jasnoor2409@localhost:5432/cloudops"
+    # Example: postgresql+psycopg://postgres:changeme@localhost:5432/cloudops
+    DATABASE_URL: str
 
     # CORS - allowed frontend origins. Kept as the same defaults that were
     # previously hardcoded directly in main.py; moving them here means a
