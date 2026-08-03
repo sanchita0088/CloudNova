@@ -3,6 +3,9 @@ from typing import Dict, Any, List
 from app.services.system_info import get_system_info
 from app.services.metrics_provider import metrics_factory
 
+from app.db.session import SessionLocal
+from app.models.system_setting import SystemSetting
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,47 +17,30 @@ class LiveMonitorService:
 
     def __init__(self):
         self.mode = "demo"  # Fallback in-memory mode
-        self._table_initialized = False
-
-    def _init_db_table(self):
-        if self._table_initialized:
-            return
-        try:
-            from app.db.database import engine
-            from sqlalchemy import text
-            with engine.begin() as conn:
-                conn.execute(text("CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(50) PRIMARY KEY, value VARCHAR(100));"))
-                conn.execute(text("INSERT INTO system_settings (key, value) VALUES ('monitoring_mode', 'demo') ON CONFLICT (key) DO NOTHING;"))
-            self._table_initialized = True
-        except Exception as e:
-            logger.error(f"Error initializing system_settings table: {e}")
 
     def get_mode(self) -> str:
-        self._init_db_table()
         try:
-            from app.db.database import engine
-            from sqlalchemy import text
-            with engine.connect() as conn:
-                res = conn.execute(text("SELECT value FROM system_settings WHERE key = 'monitoring_mode';")).fetchone()
-                if res:
-                    return res[0]
+            with SessionLocal() as session:
+                setting = session.query(SystemSetting).filter_by(key="monitoring_mode").first()
+                if setting:
+                    return setting.value
         except Exception as e:
             logger.error(f"Error reading mode from database: {e}")
         return self.mode
 
     def set_mode(self, mode: str, caller_filename: str = "unknown", caller_function: str = "unknown", reason: str = "unspecified") -> str:
-        self._init_db_table()
         prev_mode = self.get_mode()
         if mode in ["live", "demo"]:
             self.mode = mode
             try:
-                from app.db.database import engine
-                from sqlalchemy import text
-                with engine.begin() as conn:
-                    conn.execute(
-                        text("INSERT INTO system_settings (key, value) VALUES ('monitoring_mode', :val) ON CONFLICT (key) DO UPDATE SET value = :val;"),
-                        {"val": mode}
-                    )
+                with SessionLocal() as session:
+                    setting = session.query(SystemSetting).filter_by(key="monitoring_mode").first()
+                    if setting:
+                        setting.value = mode
+                    else:
+                        setting = SystemSetting(key="monitoring_mode", value=mode)
+                        session.add(setting)
+                    session.commit()
             except Exception as e:
                 logger.error(f"Error saving mode to database: {e}")
             from datetime import datetime

@@ -170,14 +170,16 @@ class RAGService:
         logger.info(f"Successfully added {len(ids)} chunks to ChromaDB.")
         return ids
 
-    def search(self, query: str, k: int = 3) -> List[Document]:
+    def search(self, query: str, k: int = 3, tenant_id: Optional[str] = None) -> List[Document]:
         """
-        Performs vector similarity search in ChromaDB.
+        Performs vector similarity search in ChromaDB with multi-tenant isolation support.
         """
         vectorstore = self.get_vectorstore()
-        logger.info(f"Searching ChromaDB for query: '{query}' with k={k}")
-        results = vectorstore.similarity_search(query, k=k)
+        logger.info(f"Searching ChromaDB for query: '{query}' with k={k}, tenant_id={tenant_id}")
+        filter_dict = {"tenant_id": tenant_id} if tenant_id else None
+        results = vectorstore.similarity_search(query, k=k, filter=filter_dict)
         return results
+
 
 
 # Global singleton instance

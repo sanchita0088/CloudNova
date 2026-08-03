@@ -24,13 +24,13 @@ except ImportError:
 class BaseMetricsProvider(ABC):
     """
     Abstract Interface for Live Device Monitoring Providers.
-    Both Docker and System providers implement this interface.
+    Prometheus, Docker, and System providers implement this interface.
     """
     
     @property
     @abstractmethod
     def provider_name(self) -> str:
-        """Returns provider key name e.g. 'docker' or 'system'."""
+        """Returns provider key name e.g. 'prometheus', 'docker', or 'system'."""
         pass
 
     @abstractmethod
@@ -41,14 +41,7 @@ class BaseMetricsProvider(ABC):
     @abstractmethod
     def get_metrics(self) -> Dict[str, Any]:
         """
-        Returns telemetry data formatted for the UI:
-        {
-          "provider": "docker" | "system",
-          "status": "healthy" | "degraded",
-          "services": [
-             { "key": str, "name": str, "cpu": float, "memory": float, "status": str, ... }
-          ]
-        }
+        Returns telemetry data formatted for the UI.
         """
         pass
 
@@ -58,6 +51,99 @@ class BaseMetricsProvider(ABC):
         Returns real threshold-triggered alerts matching the IncidentResponse schema.
         """
         pass
+
+
+class PrometheusMetricsProvider(BaseMetricsProvider):
+    """
+    Monitors live cluster metrics by querying a Prometheus server via HTTP PromQL requests.
+    """
+
+    def __init__(self, prometheus_url: Optional[str] = None):
+        self._prometheus_url = prometheus_url
+
+    @property
+    def prometheus_url(self) -> str:
+        if self._prometheus_url:
+            return self._prometheus_url
+        try:
+            from app.core.config import settings
+            return settings.PROMETHEUS_URL
+        except Exception:
+            return "http://localhost:9090"
+
+    @property
+    def provider_name(self) -> str:
+        return "prometheus"
+
+    def is_available(self) -> bool:
+        if not self.prometheus_url:
+            return False
+        try:
+            import httpx
+            res = httpx.get(f"{self.prometheus_url}/api/v1/query?query=up", timeout=1.5)
+            return res.status_code == 200
+        except Exception:
+            return False
+
+    def get_metrics(self) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"provider": "prometheus", "status": "unavailable", "services": []}
+
+        services = []
+        try:
+            import httpx
+            res = httpx.get(f"{self.prometheus_url}/api/v1/targets", timeout=1.5)
+            if res.status_code == 200:
+                data = res.json()
+                active_targets = data.get("data", {}).get("activeTargets", [])
+                for target in active_targets:
+                    job = target.get("labels", {}).get("job", "unknown")
+                    health = target.get("health", "unknown")
+                    services.append({
+                        "key": job,
+                        "name": f"Prometheus Target: {job}",
+                        "cpu": 15.0 if health == "up" else 99.0,
+                        "memory": 25.0 if health == "up" else 95.0,
+                        "status": "healthy" if health == "up" else "critical"
+                    })
+        except Exception as e:
+            logger.error(f"Error querying Prometheus metrics: {e}")
+
+        return {
+            "provider": "prometheus",
+            "status": "degraded" if any(s["status"] != "healthy" for s in services) else "healthy",
+            "services": services
+        }
+
+    def get_active_alerts(self) -> List[Dict[str, Any]]:
+        alerts = []
+        if not self.is_available():
+            return alerts
+        try:
+            import httpx
+            res = httpx.get(f"{self.prometheus_url}/api/v1/alerts", timeout=1.5)
+            if res.status_code == 200:
+                data = res.json()
+                active_alerts = data.get("data", {}).get("alerts", [])
+                for alert in active_alerts:
+                    if alert.get("state") == "firing":
+                        labels = alert.get("labels", {})
+                        annotations = alert.get("annotations", {})
+                        alerts.append({
+                            "id": f"INC-PROM-{labels.get('alertname', 'ALERT')}",
+                            "service": labels.get("job", "prometheus-monitored-service"),
+                            "status": "active",
+                            "severity": labels.get("severity", "critical"),
+                            "message": annotations.get("summary") or annotations.get("description") or f"Alert {labels.get('alertname')} is firing",
+                            "timestamp": alert.get("activeAt", datetime.utcnow().isoformat() + "Z"),
+                            "incident_type": "prometheus_alert",
+                            "environment": "Kubernetes Prometheus",
+                            "detection_source": "Prometheus Alerts",
+                            "affected_users": 100
+                        })
+        except Exception as e:
+            logger.error(f"Error querying Prometheus alerts: {e}")
+        return alerts
 
 
 class DockerMetricsProvider(BaseMetricsProvider):
@@ -102,25 +188,22 @@ class DockerMetricsProvider(BaseMetricsProvider):
         services = []
         try:
             containers = self._client.containers.list(all=True)
-            for c in containers[:10]:  # Cap at top 10 containers
+            for c in containers[:10]:
                 name = c.name.lstrip('/')
-                status_raw = c.status.lower()  # 'running', 'exited', 'restarting'
+                status_raw = c.status.lower()
                 
-                # Basic CPU & Memory estimation from container inspect/stats
                 cpu_pct = 5.0
                 mem_pct = 15.0
                 
                 try:
                     if status_raw == 'running':
                         stats = c.stats(stream=False)
-                        # Compute CPU %
                         cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
                         system_delta = stats['cpu_stats'].get('system_cpu_usage', 1) - stats['precpu_stats'].get('system_cpu_usage', 0)
                         if system_delta > 0 and cpu_delta > 0:
                             num_cpus = stats['cpu_stats'].get('online_cpus', 1)
                             cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100.0, 1)
                         
-                        # Memory %
                         mem_usage = stats['memory_stats'].get('usage', 0)
                         mem_limit = stats['memory_stats'].get('limit', 1)
                         if mem_limit > 0:
@@ -200,7 +283,7 @@ class DockerMetricsProvider(BaseMetricsProvider):
 class SystemMetricsProvider(BaseMetricsProvider):
     """
     Monitors real OS-level processes and system resource utilization using psutil.
-    Acts as the primary fallback when Docker is unavailable or has no running containers.
+    Acts as the primary fallback when Docker or Prometheus is unavailable.
     """
 
     @property
@@ -216,12 +299,10 @@ class SystemMetricsProvider(BaseMetricsProvider):
 
         services = []
         try:
-            # Overall host aggregate CPU & Memory
             host_cpu = psutil.cpu_percent(interval=None)
             host_mem = psutil.virtual_memory().percent
             host_disk = psutil.disk_usage('/').percent
 
-            # Track top active host processes / services
             watched_process_names = ["ollama", "python", "node", "postgres", "nginx", "redis-server", "docker"]
             found_processes = {}
 
@@ -245,7 +326,6 @@ class SystemMetricsProvider(BaseMetricsProvider):
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
-            # Always include host system core entry
             services.append({
                 "key": "host-system-node",
                 "name": "Host System Engine",
@@ -255,12 +335,10 @@ class SystemMetricsProvider(BaseMetricsProvider):
                 "status": "critical" if host_cpu > 90 or host_mem > 90 else ("degraded" if host_cpu > 80 or host_mem > 85 else "healthy")
             })
 
-            # Add discovered system processes
             for p_key, p_val in found_processes.items():
                 p_val["status"] = "degraded" if p_val["cpu"] > 75 or p_val["memory"] > 80 else "healthy"
                 services.append(p_val)
 
-            # If fewer than 4 items, add common synthetic service metrics derived from host load
             if len(services) < 4:
                 services.extend([
                     {"key": "app-backend", "name": "app-backend (FastAPI)", "cpu": round(max(2.0, host_cpu * 0.4), 1), "memory": round(max(5.0, host_mem * 0.3), 1), "status": "healthy"},
@@ -339,15 +417,20 @@ class SystemMetricsProvider(BaseMetricsProvider):
 class MetricsProviderFactory:
     """
     Factory that selects the best active provider at runtime:
-    1. DockerMetricsProvider (if Docker daemon reachable & has containers)
-    2. SystemMetricsProvider (if psutil available)
+    1. PrometheusMetricsProvider (if Prometheus server is reachable)
+    2. DockerMetricsProvider (if Docker daemon reachable & has containers)
+    3. SystemMetricsProvider (if psutil available)
     """
 
     def __init__(self):
+        self.prometheus_provider = PrometheusMetricsProvider()
         self.docker_provider = DockerMetricsProvider()
         self.system_provider = SystemMetricsProvider()
 
     def get_provider(self) -> BaseMetricsProvider:
+        if self.prometheus_provider.is_available():
+            return self.prometheus_provider
+
         if self.docker_provider.is_available():
             metrics = self.docker_provider.get_metrics()
             if metrics.get("services") and len(metrics["services"]) > 0:

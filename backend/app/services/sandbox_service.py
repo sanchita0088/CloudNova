@@ -40,15 +40,17 @@ class SandboxService:
     def _db_set_simulation_active(active: bool) -> None:
         """Write simulation_active flag to shared DB so all replicas agree."""
         try:
-            from app.db.database import engine
-            from sqlalchemy import text
+            from app.db.session import SessionLocal
+            from app.models.system_setting import SystemSetting
             val = "true" if active else "false"
-            with engine.begin() as conn:
-                conn.execute(
-                    text("INSERT INTO system_settings (key, value) VALUES ('simulation_active', :val) "
-                         "ON CONFLICT (key) DO UPDATE SET value = :val;"),
-                    {"val": val}
-                )
+            with SessionLocal() as session:
+                setting = session.query(SystemSetting).filter_by(key="simulation_active").first()
+                if setting:
+                    setting.value = val
+                else:
+                    setting = SystemSetting(key="simulation_active", value=val)
+                    session.add(setting)
+                session.commit()
         except Exception as e:
             logger.error(f"Error writing simulation_active to DB: {e}")
 
@@ -56,14 +58,12 @@ class SandboxService:
     def _db_get_simulation_active() -> bool:
         """Read simulation_active flag from shared DB."""
         try:
-            from app.db.database import engine
-            from sqlalchemy import text
-            with engine.connect() as conn:
-                row = conn.execute(
-                    text("SELECT value FROM system_settings WHERE key = 'simulation_active';")
-                ).fetchone()
-                if row:
-                    return row[0] == "true"
+            from app.db.session import SessionLocal
+            from app.models.system_setting import SystemSetting
+            with SessionLocal() as session:
+                setting = session.query(SystemSetting).filter_by(key="simulation_active").first()
+                if setting:
+                    return setting.value == "true"
         except Exception as e:
             logger.error(f"Error reading simulation_active from DB: {e}")
         return False

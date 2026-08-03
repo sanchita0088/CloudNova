@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudops-grafana-dashboard
+  namespace: cloudops
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: cloudops-ai
+    app.kubernetes.io/component: monitoring
+data:
+  cloudops-telemetry.json: |-
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": 1,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "FastAPI HTTP Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total[5m])",
+              "legendFormat": "{{ method }} {{ handler }} - {{ status }}"
+            }
+          ]
+        },
+        {
+          "title": "FastAPI HTTP Response Latency (p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95 latency (s)"
+            }
+          ]
+        },
+        {
+          "title": "PostgreSQL Active Connections",
+          "type": "gauge",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "pg_stat_activity_count",
+              "legendFormat": "connections"
+            }
+          ]
+        },
+        {
+          "title": "Kubernetes Microservices CPU Utilization",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"cloudops\"}[5m])) by (pod)",
+              "legendFormat": "{{ pod }}"
+            }
+          ]
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["cloudops", "telemetry", "prometheus"],
+      "time": {
+        "from": "now-15m",
+        "to": "now"
+      },
+      "title": "CloudOps AI Infrastructure Telemetry",
+      "uid": "cloudops-telemetry"
+    }

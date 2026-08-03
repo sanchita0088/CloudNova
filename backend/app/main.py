@@ -9,6 +9,9 @@ from app.api.incidents_router import router as incidents_router
 from app.api.analysis_router import router as analysis_router
 from app.api.sandbox_router import router as sandbox_router
 from app.api.system_router import router as system_router
+from app.api.auth_router import router as auth_router
+
+from prometheus_fastapi_instrumentator import Instrumentator
 
 setup_logging()
 
@@ -17,12 +20,18 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Instrument Prometheus metrics endpoint for Kubernetes ServiceMonitor
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 # Register routers
+app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(rag_router, prefix=settings.API_V1_STR)
 app.include_router(incidents_router, prefix=settings.API_V1_STR)
 app.include_router(analysis_router, prefix=settings.API_V1_STR)
 app.include_router(sandbox_router, prefix=settings.API_V1_STR)
 app.include_router(system_router, prefix=settings.API_V1_STR)
+
+
 
 # Set up CORS origins (sourced from settings so it can be overridden via
 # .env per-environment without a code change; defaults are unchanged)

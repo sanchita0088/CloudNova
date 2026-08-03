@@ -55,3 +55,47 @@ def get_live_monitor_service() -> LiveMonitorService:
 
 def get_sandbox_service() -> SandboxService:
     return sandbox_service
+
+
+from fastapi import HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from app.models.user import User
+from app.core import security
+
+reusable_oauth2 = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login",
+    auto_error=False
+)
+
+
+def get_current_user(
+    db: Session = Depends(get_db),
+    token: str = Depends(reusable_oauth2)
+) -> User:
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = security.decode_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    username: str = payload.get("sub")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
+    return user
+
