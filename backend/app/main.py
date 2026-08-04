@@ -20,6 +20,15 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Set up CORS middleware for frontend origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Instrument Prometheus metrics endpoint for Kubernetes ServiceMonitor
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
@@ -30,18 +39,6 @@ app.include_router(incidents_router, prefix=settings.API_V1_STR)
 app.include_router(analysis_router, prefix=settings.API_V1_STR)
 app.include_router(sandbox_router, prefix=settings.API_V1_STR)
 app.include_router(system_router, prefix=settings.API_V1_STR)
-
-
-
-# Set up CORS origins (sourced from settings so it can be overridden via
-# .env per-environment without a code change; defaults are unchanged)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # Global handlers for storage-layer errors (Phase 2). Repositories raise

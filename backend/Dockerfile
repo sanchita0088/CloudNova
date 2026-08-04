@@ -47,7 +47,7 @@ EXPOSE 8000
 # Docker checks /health every 30 s; the service is marked healthy after 3
 # consecutive successes.  The frontend depends_on this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\",8000)}/health')" \
     || exit 1
 
 # ── Entrypoint ──────────────────────────────────────────────────────────────
