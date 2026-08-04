@@ -1,10 +1,9 @@
 import os
 import logging
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Any
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
-from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.core.config import settings
 
@@ -126,7 +125,7 @@ class RAGService:
         logger.info("RAGService: Using MockEmbeddings (fallback).")
         self.embeddings = MockEmbeddings()
 
-    def get_vectorstore(self) -> Chroma:
+    def get_vectorstore(self) -> Any:
         """
         Returns a lazily-built, cached Chroma VectorStore.
 
@@ -137,6 +136,8 @@ class RAGService:
         if self.disabled or os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true":
             logger.info("RAGService: DISABLE_VECTOR_SEARCH is enabled. Vector store disabled.")
             raise RuntimeError("Vector store initialization skipped because DISABLE_VECTOR_SEARCH is set to 'true'.")
+
+        from langchain_community.vectorstores import Chroma
 
         if self._vectorstore is None:
             os.makedirs(self.persist_directory, exist_ok=True)
