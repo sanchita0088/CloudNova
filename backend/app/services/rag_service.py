@@ -74,7 +74,12 @@ class RAGService:
     def __init__(self):
         self.persist_directory = settings.CHROMA_DB_DIR
         self._vectorstore: Optional[Chroma] = None
-        self._init_embeddings()
+        self.disabled = os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true"
+        if self.disabled:
+            logger.info("RAGService: DISABLE_VECTOR_SEARCH is set to 'true'. Skipping vector store and embeddings initialization.")
+            self.embeddings = MockEmbeddings()
+        else:
+            self._init_embeddings()
 
     def _init_embeddings(self):
         """
@@ -82,6 +87,9 @@ class RAGService:
         Otherwise initializes OllamaEmbeddings using the local Ollama instance configuration.
         Otherwise falls back to MockEmbeddings if Ollama is unreachable.
         """
+        if self.disabled or os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true":
+            return
+
         if settings.GEMINI_API_KEY:
             try:
                 logger.info("GEMINI_API_KEY is set. Initializing GeminiEmbeddings...")
@@ -126,6 +134,10 @@ class RAGService:
         avoid re-opening the persistent client (and holding multiple concurrent
         clients over the same directory) on every request.
         """
+        if self.disabled or os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true":
+            logger.info("RAGService: DISABLE_VECTOR_SEARCH is enabled. Vector store disabled.")
+            raise RuntimeError("Vector store initialization skipped because DISABLE_VECTOR_SEARCH is set to 'true'.")
+
         if self._vectorstore is None:
             os.makedirs(self.persist_directory, exist_ok=True)
             self._vectorstore = Chroma(
@@ -146,6 +158,10 @@ class RAGService:
         """
         Splits and inserts documents into the Chroma database.
         """
+        if self.disabled or os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true":
+            logger.info("RAGService: DISABLE_VECTOR_SEARCH is set to 'true'. Ingestion skipped.")
+            return []
+
         # Set up text splitter
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=700,
@@ -176,7 +192,12 @@ class RAGService:
     def search(self, query: str, k: int = 3, tenant_id: Optional[str] = None) -> List[Document]:
         """
         Performs vector similarity search in ChromaDB with multi-tenant isolation support.
+        If DISABLE_VECTOR_SEARCH is set to 'true', immediately returns an empty list without calling ChromaDB.
         """
+        if self.disabled or os.getenv("DISABLE_VECTOR_SEARCH", "").strip().lower() == "true":
+            logger.info(f"RAGService: DISABLE_VECTOR_SEARCH is set to 'true'. Returning empty search results for query: '{query}'")
+            return []
+
         vectorstore = self.get_vectorstore()
         logger.info(f"Searching ChromaDB for query: '{query}' with k={k}, tenant_id={tenant_id}")
         filter_dict = {"tenant_id": tenant_id} if tenant_id else None
