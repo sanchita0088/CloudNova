@@ -54,7 +54,8 @@ class GeminiEmbeddings(Embeddings):
         result = genai.embed_content(
             model=self.model,
             content=texts,
-            task_type="retrieval_document"
+            task_type="retrieval_document",
+            request_options={"timeout": 8}
         )
         return result["embedding"]
 
@@ -63,7 +64,8 @@ class GeminiEmbeddings(Embeddings):
         result = genai.embed_content(
             model=self.model,
             content=text,
-            task_type="retrieval_query"
+            task_type="retrieval_query",
+            request_options={"timeout": 8}
         )
         return result["embedding"]
 
